@@ -3,7 +3,7 @@
 client_id = "2bab8949e840a44344485c5e61be6664"
 name = "R8Connectprod"
 handle = "r8"
-application_url = "https://tagged-cleaners-wendy-walks.trycloudflare.com"
+application_url = "https://sort-openings-uganda-lack.trycloudflare.com"
 embedded = true
 
 [build]
@@ -26,7 +26,7 @@ api_version = "2025-07"
 scopes = "read_merchant_managed_fulfillment_orders,read_orders,read_products,read_shipping,write_orders,write_products,write_shipping"
 
 [auth]
-redirect_urls = ["https://tagged-cleaners-wendy-walks.trycloudflare.com/auth/callback", "https://tagged-cleaners-wendy-walks.trycloudflare.com/auth/shopify/callback", "https://tagged-cleaners-wendy-walks.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://sort-openings-uganda-lack.trycloudflare.com/auth/callback", "https://sort-openings-uganda-lack.trycloudflare.com/auth/shopify/callback", "https://sort-openings-uganda-lack.trycloudflare.com/api/auth/callback"]
 
 [pos]
 embedded = false

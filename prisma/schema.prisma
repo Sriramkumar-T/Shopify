@@ -1,16 +1,10 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
@@ -19,7 +13,7 @@ model Session {
   state         String
   isOnline      Boolean   @default(false)
   scope         String?
-  expires       DateTime?
+  expires       DateTime? @db.Timestamptz(6)
   accessToken   String
   userId        BigInt?
   firstName     String?
@@ -32,12 +26,12 @@ model Session {
 }
 
 model ShopConfig {
-  id               Int     @id @default(autoincrement())
-  shop             String  @unique
+  id               Int      @id @default(autoincrement())
+  shop             String   @unique
   enabled          Boolean
   endpoint         String
   apiKey           String
   carrierServiceId String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime @updatedAt @db.Timestamptz(6)
 }
