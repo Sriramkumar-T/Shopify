@@ -2,6 +2,7 @@
   "name": "r8",
   "private": true,
   "scripts": {
+    "vercel-build": "prisma generate && npm run build",
     "build": "remix vite:build",
     "dev": "shopify app dev",
     "config:link": "shopify app config link",
