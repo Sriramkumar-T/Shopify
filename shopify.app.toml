@@ -3,7 +3,7 @@
 client_id = "2bab8949e840a44344485c5e61be6664"
 name = "R8Connectprod"
 handle = "r8"
-application_url = "https://universities-song-skating-context.trycloudflare.com"
+application_url = "https://shopify-beta-lemon.vercel.app"
 embedded = true
 
 [build]
@@ -15,18 +15,20 @@ api_version = "2025-07"
 
   [[webhooks.subscriptions]]
   topics = [ "app/scopes_update" ]
-  uri = "https://adaptive-electrical-arbitration-ideas.trycloudflare.com/webhooks/app/scopes_update"
+  uri = "https://shopify-beta-lemon.vercel.app/webhooks/app/scopes_update"
 
   [[webhooks.subscriptions]]
   topics = [ "app/uninstalled" ]
-  uri = "https://adaptive-electrical-arbitration-ideas.trycloudflare.com/webhooks/app/uninstalled"
+  uri = "https://shopify-beta-lemon.vercel.app/webhooks/app/uninstalled"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
 scopes = "read_merchant_managed_fulfillment_orders,read_orders,read_products,read_shipping,write_orders,write_products,write_shipping"
 
 [auth]
-redirect_urls = ["https://universities-song-skating-context.trycloudflare.com/auth/callback", "https://universities-song-skating-context.trycloudflare.com/auth/shopify/callback", "https://universities-song-skating-context.trycloudflare.com/api/auth/callback"]
+redirect_urls = ["https://shopify-beta-lemon.vercel.app/auth/callback",
+  "https://shopify-beta-lemon.vercel.app/auth/shopify/callback",
+  "https://shopify-beta-lemon.vercel.app/api/auth/callback"]
 
 [pos]
 embedded = false
