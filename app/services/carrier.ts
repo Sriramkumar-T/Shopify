@@ -1,9 +1,8 @@
 // app/services/carrier.ts
 import axios from "axios";
-import prisma from "../db.server"; // Supabase DB via Prisma
 
 const API_VERSION = "2025-07";
-const CARRIER_NAME = "R8Connect Shipping Rates"; // Match your working code
+const CARRIER_NAME = "R8Connect Shipping Rates";
 
 interface CarrierService {
   id: string;
@@ -11,164 +10,88 @@ interface CarrierService {
   callback_url: string;
   active: boolean;
 }
-
 interface CarrierServicesResponse {
   carrier_services: CarrierService[];
 }
 
-// 🔑 Always fetch Shopify access token from session table
-async function getShopToken(shop: string): Promise<string> {
-  const session = await prisma.session.findFirst({
-    where: { shop },
-  });
+export async function handleCarrierService(opts: {
+  shop: string;
+  accessToken: string;       // <-- pass the fresh token in
+  endpoint: string;
+  apiKey: string;
+  enabled: boolean;
+}): Promise<string> {
+  const { shop, accessToken, endpoint, apiKey, enabled } = opts;
 
-  if (!session?.accessToken) {
-    throw new Error(`❌ No Shopify access token found for shop: ${shop}`);
-  }
-
-  return session.accessToken;
-}
-
-
-// Main function: register/update carrier service
-export async function handleCarrierService(
-  shop: string,
-  endpoint: string,
-  apiKey: string,
-  enabled: boolean
-): Promise<string> {
   if (!enabled) {
-    console.log("Carrier service disabled — skipping registration");
+    console.log("Carrier disabled — skipping registration");
     return "";
   }
 
-  // ✅ Always fetch fresh Shopify token
-  const token = await getShopToken(shop);
-
   const callbackUrl = `${endpoint}/api/Integration/shopify/${apiKey}`;
+  console.log("🚀 Carrier handle:", { shop, callbackUrl });
 
-  console.log("🚀 Starting carrier service handling...");
-  console.log("🏪 Shop:", shop);
-  console.log("🔗 Callback URL:", callbackUrl);
-  console.log("🔑 Token length:", token?.length || 0);
+  const existing = await getCarrierServices(accessToken, shop);
 
-  try {
-    // 1. Get all existing carrier services
-    const existingCarriers = await getCarrierServices(token, shop);
-
-    // 2. Look for any R8Connect carriers
-    const r8ConnectCarriers = existingCarriers.filter((carrier) =>
-      carrier.name.startsWith(CARRIER_NAME)
-    );
-
-    // Try updating existing carriers if they belong to our app
-    for (const carrier of r8ConnectCarriers) {
-      try {
-        await updateExistingCarrierService(
-          token,
-          shop,
-          carrier.id,
-          callbackUrl,
-          enabled
-        );
-        console.log(`✅ Updated carrier: ${carrier.name}`);
-        return String(carrier.id);
-      } catch (err: any) {
-        if (
-          err instanceof axios.AxiosError &&
-          err.response?.status === 403
-        ) {
-          console.log(
-            `❌ Cannot update carrier ${carrier.name} (not created by this app)`
-          );
-          continue;
-        }
-        throw err;
+  // Update any of our carriers if present
+  const ours = existing.filter((c) => c.name?.startsWith(CARRIER_NAME));
+  for (const c of ours) {
+    try {
+      await updateExistingCarrierService(accessToken, shop, c.id, callbackUrl, enabled);
+      console.log(`✅ Updated carrier ${c.id}`);
+      return String(c.id);
+    } catch (err: any) {
+      if (axios.isAxiosError(err) && err.response?.status === 403) {
+        console.log(`❌ Not ours to update: ${c.id}`);
+        continue;
       }
+      throw err;
     }
-
-    // 3. If carrier exists with our callback URL, reuse it
-    const ownedCarrier = existingCarriers.find(
-      (carrier) => carrier.callback_url === callbackUrl
-    );
-    if (ownedCarrier) {
-      console.log(
-        `✅ Found carrier with our callback URL: ${ownedCarrier.name} (ID: ${ownedCarrier.id})`
-      );
-      return String(ownedCarrier.id);
-    }
-
-    // 4. If none found → create a new carrier
-    console.log("➕ Creating new carrier service...");
-    const newCarrierId = await createCarrierService(
-      token,
-      shop,
-      callbackUrl,
-      enabled
-    );
-    return newCarrierId;
-  } catch (error: unknown) {
-    handleCarrierError(error);
-    throw error;
   }
+
+  // Reuse if same callback is already there
+  const sameCb = existing.find((c) => c.callback_url === callbackUrl);
+  if (sameCb) {
+    console.log(`✅ Reusing carrier with same callback: ${sameCb.id}`);
+    return String(sameCb.id);
+  }
+
+  // Create new
+  console.log("➕ Creating carrier…");
+  return await createCarrierService(accessToken, shop, callbackUrl, enabled);
 }
 
-//
-// ========== HELPER FUNCTIONS ==========
-//
-
-async function getCarrierServices(
-  token: string,
-  shop: string
-): Promise<CarrierService[]> {
-  const response = await axios.get<CarrierServicesResponse>(
+// ---------- helpers ----------
+async function getCarrierServices(accessToken: string, shop: string) {
+  const r = await axios.get<CarrierServicesResponse>(
     `https://${shop}/admin/api/${API_VERSION}/carrier_services.json`,
-    {
-      headers: {
-        "X-Shopify-Access-Token": token,
-        "Content-Type": "application/json",
-      },
-    }
+    { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
   );
-  return response.data.carrier_services;
+  return r.data.carrier_services ?? [];
 }
 
 async function updateExistingCarrierService(
-  token: string,
+  accessToken: string,
   shop: string,
   carrierId: string,
   callbackUrl: string,
   enabled: boolean
-): Promise<void> {
-  const updateUrl = `https://${shop}/admin/api/${API_VERSION}/carrier_services/${carrierId}.json`;
-
+) {
   await axios.put(
-    updateUrl,
-    {
-      carrier_service: {
-        active: enabled,
-        callback_url: callbackUrl,
-      },
-    },
-    {
-      headers: {
-        "X-Shopify-Access-Token": token,
-        "Content-Type": "application/json",
-      },
-    }
+    `https://${shop}/admin/api/${API_VERSION}/carrier_services/${carrierId}.json`,
+    { carrier_service: { active: enabled, callback_url: callbackUrl } },
+    { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
   );
 }
 
 async function createCarrierService(
-  token: string,
+  accessToken: string,
   shop: string,
   callbackUrl: string,
   enabled: boolean
 ): Promise<string> {
-  const createUrl = `https://${shop}/admin/api/${API_VERSION}/carrier_services.json`;
-
-  const response = await axios.post(
-    createUrl,
+  const r = await axios.post(
+    `https://${shop}/admin/api/${API_VERSION}/carrier_services.json`,
     {
       carrier_service: {
         name: CARRIER_NAME,
@@ -178,66 +101,7 @@ async function createCarrierService(
         active: enabled,
       },
     },
-    {
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": token,
-      },
-    }
+    { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
   );
-
-  return String(response.data.carrier_service.id);
-}
-
-function handleCarrierError(error: unknown) {
-  if (error instanceof axios.AxiosError) {
-    const status = error.response?.status;
-    const responseData = error.response?.data;
-
-    console.error("❌ Carrier Service Error:", status, responseData);
-
-    if (status === 401) {
-      console.error("❌ AUTH FAILED: Token is invalid or expired");
-    }
-    if (status === 403) {
-      console.error("❌ FORBIDDEN: Store plan may not support calculated rates");
-    }
-    if (status === 422) {
-      console.error("❌ INVALID REQUEST: Callback URL already exists");
-    }
-  } else {
-    console.error("❌ Unexpected error:", error);
-  }
-}
-
-//
-// ========== PUBLIC EXPORTS ==========
-//
-
-export async function registerCarrierService(
-  shop: string,
-  enabled: boolean,
-  endpoint: string,
-  apiKey: string
-): Promise<string> {
-  return handleCarrierService(shop, endpoint, apiKey, enabled);
-}
-
-export async function updateCarrierService(
-  shop: string,
-  endpoint: string,
-  apiKey: string,
-  serviceId: string,
-  enabled: boolean
-): Promise<string> {
-  const token = await getShopToken(shop);
-  const callbackUrl = `${endpoint}/api/Integration/shopify/${apiKey}`;
-  await updateExistingCarrierService(
-    token,
-    shop,
-    serviceId,
-    callbackUrl,
-    enabled
-  );
-  return String(serviceId);
+  return String(r.data.carrier_service.id);
 }
