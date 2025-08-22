@@ -1,24 +1,23 @@
-// webhooks.app.uninstalled.tsx
+// app/routes/webhooks.app.uninstalled.tsx
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { shop, session, topic } = await authenticate.webhook(request);
+  const { shop, topic } = await authenticate.webhook(request);
 
-  console.log(`Received ${topic} webhook for ${shop}`);
+  console.log(`🛑 App uninstalled webhook received for shop: ${shop} (topic: ${topic})`);
 
-  // Clean up Shopify session rows
-  if (session) {
-    await db.session.deleteMany({ where: { shop } });
-  }
-
-  // 🗑️ Clean up shop config so old token & carrier service details are removed
   try {
-    await db.shopConfig.delete({ where: { shop } });
-    console.log(`🗑️ Deleted ShopConfig for ${shop}`);
-  } catch (err) {
-    console.log(`⚠️ No ShopConfig found for ${shop}, skipping delete.`);
+    // Delete all session data for this shop
+    await db.session.deleteMany({ where: { shop } });
+
+    // Also delete any saved shop config / tokens from Supabase
+    await db.shopConfig.deleteMany({ where: { shop } });
+
+    console.log(`✅ Cleaned up data for shop: ${shop}`);
+  } catch (error) {
+    console.error(`❌ Error cleaning up shop data for ${shop}:`, error);
   }
 
   return new Response();
