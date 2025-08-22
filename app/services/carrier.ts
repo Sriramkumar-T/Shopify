@@ -16,18 +16,19 @@ interface CarrierServicesResponse {
   carrier_services: CarrierService[];
 }
 
-// 🔑 Always fetch latest token from DB
+// 🔑 Always fetch Shopify access token from session table
 async function getShopToken(shop: string): Promise<string> {
-  const shopConfig = await prisma.shopConfig.findUnique({
+  const session = await prisma.session.findFirst({
     where: { shop },
   });
 
-  if (!shopConfig?.apiKey) {
-    throw new Error(`❌ No access token found for shop: ${shop}`);
+  if (!session?.accessToken) {
+    throw new Error(`❌ No Shopify access token found for shop: ${shop}`);
   }
 
-  return shopConfig.apiKey;
+  return session.accessToken;
 }
+
 
 // Main function: register/update carrier service
 export async function handleCarrierService(
@@ -41,7 +42,7 @@ export async function handleCarrierService(
     return "";
   }
 
-  // ✅ Always fetch fresh token
+  // ✅ Always fetch fresh Shopify token
   const token = await getShopToken(shop);
 
   const callbackUrl = `${endpoint}/api/Integration/shopify/${apiKey}`;
@@ -144,7 +145,6 @@ async function updateExistingCarrierService(
   await axios.put(
     updateUrl,
     {
-      credentials: "include",
       carrier_service: {
         active: enabled,
         callback_url: callbackUrl,
@@ -170,7 +170,6 @@ async function createCarrierService(
   const response = await axios.post(
     createUrl,
     {
-      credentials: "include",
       carrier_service: {
         name: CARRIER_NAME,
         callback_url: callbackUrl,
@@ -215,7 +214,6 @@ function handleCarrierError(error: unknown) {
 // ========== PUBLIC EXPORTS ==========
 //
 
-// Called on install/reinstall → ensures carrier service is registered
 export async function registerCarrierService(
   shop: string,
   enabled: boolean,
@@ -225,7 +223,6 @@ export async function registerCarrierService(
   return handleCarrierService(shop, endpoint, apiKey, enabled);
 }
 
-// Update existing carrier service by ID
 export async function updateCarrierService(
   shop: string,
   endpoint: string,

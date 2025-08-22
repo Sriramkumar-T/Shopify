@@ -115,7 +115,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         throw new Error(`Authentication test failed: ${authTestError.response?.status} - Check access token and shop domain`);
       }
 
-      const serviceId = await handleCarrierService(session.accessToken!, shop, endpoint, apiKey,enabled);
+      const serviceId = await handleCarrierService( shop, endpoint, apiKey,enabled);
       await prisma.shopConfig.update({ where: { shop }, data: { carrierServiceId: serviceId } });
       // await ensureWebhooks(session.accessToken!, shop);
     }
