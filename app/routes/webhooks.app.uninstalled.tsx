@@ -1,3 +1,4 @@
+// webhooks.app.uninstalled.tsx
 import type { ActionFunctionArgs } from "@remix-run/node";
 import { authenticate } from "../shopify.server";
 import db from "../db.server";
@@ -7,10 +8,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   console.log(`Received ${topic} webhook for ${shop}`);
 
-  // Webhook requests can trigger multiple times and after an app has already been uninstalled.
-  // If this webhook already ran, the session may have been deleted previously.
+  // Clean up Shopify session rows
   if (session) {
     await db.session.deleteMany({ where: { shop } });
+  }
+
+  // 🗑️ Clean up shop config so old token & carrier service details are removed
+  try {
+    await db.shopConfig.delete({ where: { shop } });
+    console.log(`🗑️ Deleted ShopConfig for ${shop}`);
+  } catch (err) {
+    console.log(`⚠️ No ShopConfig found for ${shop}, skipping delete.`);
   }
 
   return new Response();
