@@ -1,4 +1,3 @@
-// app/db.server.ts
 import { PrismaClient } from "@prisma/client";
 
 declare global {
@@ -16,11 +15,15 @@ if (process.env.NODE_ENV !== "production") global.__prisma = prisma;
 
 // ---------- DB helpers ----------
 export async function clearShopData(shop: string) {
-  // Delete order matters only if you have FKs; otherwise transaction is neat & safe
-  await prisma.$transaction([
-    prisma.shopConfig.deleteMany({ where: { shop } }),
-    prisma.session.deleteMany({ where: { shop } }),
-  ]);
+  try {
+    await prisma.$transaction([
+      prisma.shopConfig.deleteMany({ where: { shop } }),
+      prisma.session.deleteMany({ where: { shop } }),
+    ]);
+  } catch (err) {
+    console.error(`❌ Error while deleting data for shop=${shop}`, err);
+    throw err;
+  }
 }
 
 export async function upsertShopConfig(opts: {

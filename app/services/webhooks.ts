@@ -1,36 +1,25 @@
-// // app/services/webhooks.ts
-// import axios from "axios";
+// app/services/webhooks.ts
+import { DeliveryMethod } from "@shopify/shopify-api";
+import shopify from "../shopify.server";
+import type { Session } from "@shopify/shopify-app-remix/server";
 
-// const API_VERSION = "2025-07";
-
-// const requiredTopics = [
-//   "orders/create",
-//   "orders/updated",
-// ];
-
-// export async function ensureWebhooks(token: string, shop: string) {
-//   try {
-//     const existing = await axios.get(`https://${shop}/admin/api/${API_VERSION}/webhooks.json`, {
-//       headers: { "X-Shopify-Access-Token": token }
-//     });
-
-//     const existingTopics = new Set(existing.data.webhooks.map((w: any) => w.topic));
-
-//     for (const topic of requiredTopics) {
-//       if (!existingTopics.has(topic)) {
-//         await axios.post(`https://${shop}/admin/api/${API_VERSION}/webhooks.json`, {
-//           webhook: {
-//             topic,
-//             address: `https://${shop}/api/webhooks/${topic.replace("/", "_")}`,
-//             format: "json"
-//           }
-//         }, {
-//           headers: { "X-Shopify-Access-Token": token }
-//         });
-//       }
-//     }
-//   } catch (error: unknown) {
-//     const errorMessage = error instanceof Error ? error.message : String(error);
-//     throw new Error(`Failed to ensure webhooks: ${errorMessage}`);
-//   }
-// }
+// Helper to register all your app's webhooks
+export async function registerWebhooks(session: Session) {
+  await (shopify.registerWebhooks as any)({
+    session,
+    webhooks: {
+      APP_UNINSTALLED: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/app.uninstalled",
+      },
+      ORDERS_CREATE: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/orders.create",
+      },
+      ORDERS_UPDATED: {
+        deliveryMethod: DeliveryMethod.Http,
+        callbackUrl: "/webhooks/orders.updated",
+      },
+    },
+  });
+}
