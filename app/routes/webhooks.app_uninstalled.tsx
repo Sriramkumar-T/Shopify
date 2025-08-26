@@ -5,15 +5,19 @@ import { prisma } from "../db.server";
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const ctx = await authenticate.webhook(request);
-    console.log(`Received ${ctx.topic} webhook for ${ctx.shop}`, { payload: ctx.payload });
+    console.log(`Received ${ctx.topic} webhook for ${ctx.shop}`, {
+      headers: Object.fromEntries(request.headers.entries()),
+      payload: ctx.payload,
+    });
 
     if (ctx.topic === "APP_UNINSTALLED" && ctx.shop) {
-      const shop = ctx.shop;
       await prisma.$transaction([
-        prisma.session.deleteMany({ where: { shop } }),
-        prisma.shopConfig.deleteMany({ where: { shop } }),
+        prisma.session.deleteMany({ where: { shop: ctx.shop } }),
+        prisma.shopConfig.deleteMany({ where: { shop: ctx.shop } }),
       ]);
-      console.log(`✅ Cleaned up sessions + ShopConfig for ${shop}`);
+      console.log(`✅ Cleared data for shop: ${ctx.shop}`);
+    } else {
+      console.warn(`Unexpected topic or missing shop: ${ctx.topic}, ${ctx.shop}`);
     }
 
     return new Response("OK", { status: 200 });
