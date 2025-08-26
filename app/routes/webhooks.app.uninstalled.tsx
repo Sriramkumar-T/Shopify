@@ -1,28 +1,24 @@
-// app/routes/webhooks.app.uninstalled.ts
+// app/routes/webhooks.app.uninstalled.tsx
 import type { ActionFunctionArgs } from "@remix-run/node";
-import shopify, { sessionStorage } from "../shopify.server";
+import { authenticate } from "../shopify.server";
+import { prisma } from "../db.server";
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  try {
-    const { topic, shop, session } = await shopify.authenticate.webhook(request);
+  const ctx = await authenticate.webhook(request); // verifies HMAC and parses
 
-    if (topic === "APP_UNINSTALLED") {
-      console.log(`App uninstalled from ${shop}`);
+  if (ctx.topic === "APP_UNINSTALLED" && ctx.shop) {
+    const shop = ctx.shop;
+    console.log(`🗑️ App uninstalled from ${shop}`);
 
-      // Remove session from DB
-      if (session) {
-        await sessionStorage.deleteSession(session.id);
-        console.log(`Deleted session for ${shop}`);
-      }
-
-      // If you also have a custom ShopConfig table, delete row here:
-      // import { prisma } from "../db.server";
-      // await prisma.shopConfig.deleteMany({ where: { shop } });
+    try {
+      await prisma.session.deleteMany({ where: { shop } });
+      await prisma.shopConfig.deleteMany({ where: { shop } });
+      console.log(`✅ Cleaned up sessions + ShopConfig for ${shop}`);
+    } catch (err) {
+      console.error("❌ Cleanup failed:", err);
+      return new Response("Cleanup failed", { status: 500 });
     }
-
-    return new Response("OK", { status: 200 });
-  } catch (error: any) {
-    console.error("Failed to process webhook:", error);
-    return new Response("Error", { status: 500 });
   }
+
+  return new Response("OK");
 };
