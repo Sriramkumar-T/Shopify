@@ -21,11 +21,13 @@ api_version = "2025-07"
   topics = [ "app/uninstalled" ]
   uri = "https://application-beta-lemon.vercel.app/webhooks/app/uninstalled"
 
-
+   [[webhooks.subscriptions]]
+   compliance_topics = ["customers/data_request", "customers/redact", "shop/redact"]
+   uri = "https://application-beta-lemon.vercel.app/webhooks/compliance"
 
 [access_scopes]
 # Learn more at https://shopify.dev/docs/apps/tools/cli/configuration#access_scopes
-scopes = "read_merchant_managed_fulfillment_orders,read_orders,read_products,read_shipping,write_orders,write_products,write_shipping"
+scopes = "read_products,read_shipping,write_products,write_shipping"
 
 [auth]
 redirect_urls = ["https://application-beta-lemon.vercel.app/auth/callback", "https://application-beta-lemon.vercel.app/auth/shopify/callback", "https://application-beta-lemon.vercel.app/api/auth/callback"]
