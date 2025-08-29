@@ -2,198 +2,197 @@
 import { useEffect, useState, useCallback } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { useFetcher, useLoaderData } from "@remix-run/react";
-import { Page, Layout, Card, Text, Checkbox, TextField, Button, InlineStack, Banner } from "@shopify/polaris";
-import { TitleBar, useAppBridge } from "@shopify/app-bridge-react";
-import { authenticate } from "../shopify.server";
-import { prisma, upsertShopConfig } from "../db.server";
-import { handleCarrierService } from "../services/carrier";
+import { Form, useLoaderData, useNavigation } from "@remix-run/react";
+import {prisma} from "../db.server";
+import shopify from "../shopify.server";
 import axios from "axios";
+import { authenticate } from "../shopify.server";
 
 const API_VERSION = "2025-07";
 
-interface SettingsData {
-  enabled: boolean;
-  endpoint: string;
-  apiKey: string;
-  accessToken: string;
-}
-interface ActionResponse {
-  ok: boolean;
-  errors?: Record<string, string>;
-  settings?: SettingsData;
-}
-
-export const loader = async ({ request }: LoaderFunctionArgs) => {
+export async function loader({ request }: LoaderFunctionArgs) {
   const { session } = await authenticate.admin(request);
-  const shop = session.shop!;
-  const config = await prisma.shopConfig.findUnique({ where: { shop } });
 
-  return json<SettingsData>({
-    enabled: config?.enabled ?? false,
-    endpoint: config?.endpoint ?? "",
-    apiKey: config?.apiKey ?? "",
-    accessToken: session.accessToken!, // always fresh
+  const shopConfig = await prisma.shopConfig.findUnique({
+    where: { shop: session.shop },
   });
-};
 
-export const action = async ({ request }: ActionFunctionArgs) => {
+  return json({ shopConfig });
+}
+
+export async function action({ request }: ActionFunctionArgs) {
   const { session } = await authenticate.admin(request);
-  const shop = session.shop!;
-  const accessToken = session.accessToken!;
-  const form = await request.formData();
+  const formData = await request.formData();
 
-  const enabled = form.get("enabled") === "on";
-  const endpoint = String(form.get("endpoint") ?? "").trim();
-  const apiKey = String(form.get("apiKey") ?? "").trim();
-
-  const errors: Record<string, string> = {};
-  if (endpoint && !/^https?:\/\//i.test(endpoint)) {
-    errors.endpoint = "Endpoint must be a valid URL (http/https).";
-  }
-  if (Object.keys(errors).length) {
-    return json<ActionResponse>({ ok: false, errors }, { status: 400 });
-  }
-
-  // Persist config first (without carrier id yet)
-  await upsertShopConfig({ shop, enabled, endpoint, apiKey });
-
-  let carrierError: string | undefined;
+  const enabled = formData.get("enabled") === "on";
+  const endpoint = formData.get("endpoint") as string;
+  const apiKey = formData.get("apiKey") as string;
 
   try {
-    if (enabled && endpoint && apiKey) {
-      // quick auth sanity check (catches 401 early)
-      const shopResp = await axios.get(`https://${shop}/admin/api/${API_VERSION}/shop.json`, {
-        headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" },
-      });
-      console.log("✅ Auth OK. Plan:", shopResp.data?.shop?.plan_name);
+    if (enabled) {
+      // Create or update carrier service
+      const carrierService = {
+        carrier_service: {
+          name: "R8Connect Carrier Service",
+          callback_url: `${process.env.APP_URL}/api/rate`,
+          service_discovery: true,
+        },
+      };
 
-      const carrierServiceId = await handleCarrierService({
-        shop,
-        accessToken,         // <-- fresh token, never from DB
-        endpoint,
-        apiKey,
-        enabled,
+      let carrierServiceId: string | null = null;
+
+      const existing = await prisma.shopConfig.findUnique({
+        where: { shop: session.shop },
       });
 
-      // save the created/updated carrier ID
-      await upsertShopConfig({ shop, enabled, endpoint, apiKey, carrierServiceId });
-    } else if (!enabled) {
-      // if disabling, try to deactivate existing carrier
-      const existing = await prisma.shopConfig.findUnique({ where: { shop } });
-      // Disable carrier service when checkbox is unchecked
-      if (!enabled && existing?.carrierServiceId) {
+      if (existing?.carrierServiceId) {
+        // update carrier service
+        const response = await axios.put(
+          `https://${session.shop}/admin/api/${API_VERSION}/carrier_services/${existing.carrierServiceId}.json`,
+          carrierService,
+          {
+            headers: {
+              "X-Shopify-Access-Token": session.accessToken,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        carrierServiceId = response.data.carrier_service.id.toString();
+      } else {
+        // create carrier service
+        const response = await axios.post(
+          `https://${session.shop}/admin/api/${API_VERSION}/carrier_services.json`,
+          carrierService,
+          {
+            headers: {
+              "X-Shopify-Access-Token": session.accessToken,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        carrierServiceId = response.data.carrier_service.id.toString();
+      }
+
+      // save config
+      await prisma.shopConfig.upsert({
+        where: { shop: session.shop },
+        update: { enabled, endpoint, apiKey, carrierServiceId },
+        create: {
+          shop: session.shop,
+          enabled,
+          endpoint,
+          apiKey,
+          carrierServiceId,
+        },
+      });
+    } else {
+      // Disable → Delete carrier service completely
+      const existing = await prisma.shopConfig.findUnique({
+        where: { shop: session.shop },
+      });
+
+      if (existing?.carrierServiceId) {
         try {
           await axios.delete(
-            `https://${shop}/admin/api/${API_VERSION}/carrier_services/${existing.carrierServiceId}.json`,
+            `https://${session.shop}/admin/api/${API_VERSION}/carrier_services/${existing.carrierServiceId}.json`,
             {
               headers: {
-                "X-Shopify-Access-Token": accessToken,
+                "X-Shopify-Access-Token": session.accessToken,
                 "Content-Type": "application/json",
               },
             }
           );
-
-          console.log("✅ Carrier deleted");
-
-          // Update DB so carrierServiceId is cleared
-          await upsertShopConfig({
-            shop,
-            enabled: false,
-            endpoint,
-            apiKey,
-            carrierServiceId: null,
-          });
-        } catch (error) {
-          console.error("❌ Error deleting carrier service:", error);
-          return json({ ok: false, error: "Failed to delete carrier service" });
+          console.log("✅ Carrier service deleted");
+        } catch (err: any) {
+          console.error("❌ Error deleting carrier service:", err.response?.data || err.message);
         }
-
-        return json({ ok: true });
       }
 
+      // update DB with disabled status
+      await prisma.shopConfig.upsert({
+        where: { shop: session.shop },
+        update: { enabled: false, endpoint, apiKey, carrierServiceId: null },
+        create: {
+          shop: session.shop,
+          enabled: false,
+          endpoint,
+          apiKey,
+          carrierServiceId: null,
+        },
+      });
     }
-  } catch (e: any) {
-    console.error("❌ Carrier op failed:", e.response?.data || e.message);
-    carrierError = e.message || "Carrier operation failed";
+
+    return json({ ok: true });
+  } catch (error: any) {
+    console.error("❌ Error saving config:", error.response?.data || error.message);
+    return json({ ok: false, error: error.message }, { status: 500 });
   }
-
-  const payload: ActionResponse = {
-    ok: !carrierError,
-    settings: { enabled, endpoint, apiKey, accessToken },
-    ...(carrierError ? { errors: { carrierService: carrierError } } : {}),
-  };
-
-  return json(payload, { status: carrierError ? 400 : 200 });
-};
+}
 
 export default function Index() {
-  const loaderSettings = useLoaderData<SettingsData>();
-  const fetcher = useFetcher<ActionResponse>();
-  const shopify = useAppBridge();
+  const { shopConfig } = useLoaderData<typeof loader>();
+  const navigation = useNavigation();
+  const [enabled, setEnabled] = useState(shopConfig?.enabled || false);
+  const [endpoint, setEndpoint] = useState(shopConfig?.endpoint || "");
+  const [apiKey, setApiKey] = useState(shopConfig?.apiKey || "");
 
-  const [enabled, setEnabled] = useState(loaderSettings.enabled);
-  const [endpoint, setEndpoint] = useState(loaderSettings.endpoint);
-  const [apiKey, setApiKey] = useState(loaderSettings.apiKey);
-  const [carrierServiceError, setCarrierServiceError] = useState<string | undefined>();
-  const [carrierServiceSuccess, setCarrierServiceSuccess] = useState(false);
+  const isSubmitting = navigation.state === "submitting";
+
+  const handleToggle = useCallback(() => {
+    setEnabled((prev) => !prev);
+  }, []);
 
   useEffect(() => {
-    if (!fetcher.data) return;
-    setCarrierServiceError(fetcher.data.errors?.carrierService);
-    if (fetcher.data.ok) {
-      setCarrierServiceSuccess(true);
-      shopify.toast.show("Settings saved.");
+    if (!enabled) {
+      setEndpoint(shopConfig?.endpoint || "");
+      setApiKey(shopConfig?.apiKey || "");
     }
-  }, [fetcher.data, shopify]);
-
-  const save = useCallback(() => {
-    const fd = new FormData();
-    fd.append("enabled", enabled ? "on" : "");
-    fd.append("endpoint", endpoint);
-    fd.append("apiKey", apiKey);
-    fetcher.submit(fd, { method: "POST" });
-  }, [fetcher, enabled, endpoint, apiKey]);
+  }, [enabled, shopConfig]);
 
   return (
-    <Page>
-      <TitleBar title="R8Connect" />
-      <Layout>
-        <Layout.Section>
-          <Card>
-            <div style={{ padding: 20, maxWidth: 520 }}>
-              <Text as="h2" variant="headingLg">R8Connect</Text>
-              <Text as="p" tone="subdued">Rating Engine for Custom Shipping</Text>
+    <div className="p-6">
+      <h1 className="text-2xl font-bold mb-4">R8Connect Settings</h1>
+      <Form method="post" className="space-y-4">
+        <label className="flex items-center space-x-2">
+          <input
+            type="checkbox"
+            name="enabled"
+            checked={enabled}
+            onChange={handleToggle}
+          />
+          <span>Enable Carrier Service</span>
+        </label>
 
-              {carrierServiceSuccess && (
-                <Banner tone="success" onDismiss={() => setCarrierServiceSuccess(false)}>
-                  Carrier settings updated.
-                </Banner>
-              )}
-              {carrierServiceError && (
-                <Banner tone="critical" onDismiss={() => setCarrierServiceError(undefined)}>
-                  {carrierServiceError}
-                </Banner>
-              )}
+        <div>
+          <label className="block">Endpoint</label>
+          <input
+            type="text"
+            name="endpoint"
+            value={endpoint}
+            onChange={(e) => setEndpoint(e.target.value)}
+            className="border rounded p-2 w-full"
+          />
+        </div>
 
-              <Checkbox label="Enable" checked={enabled} onChange={setEnabled} />
-              <div style={{ marginTop: 16 }}>
-                <TextField label="Endpoint" value={endpoint} onChange={setEndpoint} autoComplete="off" />
-              </div>
-              <div style={{ marginTop: 16 }}>
-                <TextField label="API Key" value={apiKey} onChange={setApiKey} type="password" autoComplete="off" />
-              </div>
-              <div style={{ marginTop: 24 }}>
-                <InlineStack align="start">
-                  <Button variant="primary" onClick={save} loading={fetcher.state !== "idle"}>
-                    Save changes
-                  </Button>
-                </InlineStack>
-              </div>
-            </div>
-          </Card>
-        </Layout.Section>
-      </Layout>
-    </Page>
+        <div>
+          <label className="block">API Key</label>
+          <input
+            type="text"
+            name="apiKey"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="border rounded p-2 w-full"
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="bg-blue-600 text-white px-4 py-2 rounded"
+        >
+          {isSubmitting ? "Saving..." : "Save"}
+        </button>
+      </Form>
+    </div>
   );
 }
