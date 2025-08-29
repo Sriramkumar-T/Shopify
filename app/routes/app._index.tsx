@@ -81,18 +81,37 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     } else if (!enabled) {
       // if disabling, try to deactivate existing carrier
       const existing = await prisma.shopConfig.findUnique({ where: { shop } });
-      if (existing?.carrierServiceId) {
+      // Disable carrier service when checkbox is unchecked
+      if (!enabled && existing?.carrierServiceId) {
         try {
-          await axios.put(
+          await axios.delete(
             `https://${shop}/admin/api/${API_VERSION}/carrier_services/${existing.carrierServiceId}.json`,
-            { carrier_service: { active: false } },
-            { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
+            {
+              headers: {
+                "X-Shopify-Access-Token": accessToken,
+                "Content-Type": "application/json",
+              },
+            }
           );
-          console.log("✅ Carrier deactivated");
-        } catch (e: any) {
-          carrierError = `Failed to deactivate: ${e.response?.status} ${e.response?.statusText || e.message}`;
+
+          console.log("✅ Carrier deleted");
+
+          // Update DB so carrierServiceId is cleared
+          await upsertShopConfig({
+            shop,
+            enabled: false,
+            endpoint,
+            apiKey,
+            carrierServiceId: null,
+          });
+        } catch (error) {
+          console.error("❌ Error deleting carrier service:", error);
+          return json({ ok: false, error: "Failed to delete carrier service" });
         }
+
+        return json({ ok: true });
       }
+
     }
   } catch (e: any) {
     console.error("❌ Carrier op failed:", e.response?.data || e.message);

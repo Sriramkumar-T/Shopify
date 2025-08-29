@@ -3,7 +3,7 @@
 client_id = "2bab8949e840a44344485c5e61be6664"
 name = "R8Connectprod"
 handle = "r8"
-application_url = "https://application-beta-lemon.vercel.app
+application_url = "https://application-beta-lemon.vercel.app"
 embedded = true
 
 [build]
