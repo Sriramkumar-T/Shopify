@@ -24,6 +24,7 @@ export async function handleCarrierService(opts: {
   const { shop, accessToken, endpoint, apiKey, enabled } = opts;
 
   if (!enabled) {
+    // Disable is handled separately in _index.tsx via DELETE
     console.log("Carrier disabled — skipping registration");
     return "";
   }
@@ -37,7 +38,7 @@ export async function handleCarrierService(opts: {
   const ours = existing.filter((c) => c.name?.startsWith(CARRIER_NAME));
   for (const c of ours) {
     try {
-      await updateExistingCarrierService(accessToken, shop, c.id, callbackUrl, enabled);
+      await updateExistingCarrierService(accessToken, shop, c.id, callbackUrl);
       console.log(`✅ Updated carrier ${c.id}`);
       return String(c.id);
     } catch (err: any) {
@@ -58,7 +59,7 @@ export async function handleCarrierService(opts: {
 
   // Create new
   console.log("➕ Creating carrier…");
-  return await createCarrierService(accessToken, shop, callbackUrl, enabled);
+  return await createCarrierService(accessToken, shop, callbackUrl);
 }
 
 // ---------- helpers ----------
@@ -74,12 +75,18 @@ async function updateExistingCarrierService(
   accessToken: string,
   shop: string,
   carrierId: string,
-  callbackUrl: string,
-  enabled: boolean
+  callbackUrl: string
 ) {
   await axios.put(
     `https://${shop}/admin/api/${API_VERSION}/carrier_services/${carrierId}.json`,
-    { carrier_service: { active: enabled, callback_url: callbackUrl } },
+    {
+      carrier_service: {
+        callback_url: callbackUrl,
+        service_discovery: true,
+        format: "json",
+        active: true,   // ✅ always true, never false
+      },
+    },
     { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
   );
 }
@@ -87,8 +94,7 @@ async function updateExistingCarrierService(
 async function createCarrierService(
   accessToken: string,
   shop: string,
-  callbackUrl: string,
-  enabled: boolean
+  callbackUrl: string
 ): Promise<string> {
   const r = await axios.post(
     `https://${shop}/admin/api/${API_VERSION}/carrier_services.json`,
@@ -98,7 +104,7 @@ async function createCarrierService(
         callback_url: callbackUrl,
         service_discovery: true,
         format: "json",
-        active: enabled,
+        active: true,   // ✅ always true, never false
       },
     },
     { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }

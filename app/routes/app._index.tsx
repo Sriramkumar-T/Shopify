@@ -79,45 +79,40 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       // save the created/updated carrier ID
       await upsertShopConfig({ shop, enabled, endpoint, apiKey, carrierServiceId });
     } else if (!enabled) {
-  // if disabling, try to deactivate existing carrier
-  const existing = await prisma.shopConfig.findUnique({ where: { shop } });
+      // if disabling, try to deactivate existing carrier
+      const existing = await prisma.shopConfig.findUnique({ where: { shop } });
+      // Disable carrier service when checkbox is unchecked
+      if (!enabled && existing?.carrierServiceId) {
+        try {
+          await axios.delete(
+            `https://${shop}/admin/api/${API_VERSION}/carrier_services/${existing.carrierServiceId}.json`,
+            {
+              headers: {
+                "X-Shopify-Access-Token": accessToken,
+                "Content-Type": "application/json",
+              },
+            }
+          );
 
-  if (existing?.carrierServiceId) {
-    try {
-      await axios.put(
-        `https://${shop}/admin/api/${API_VERSION}/carrier_services/${existing.carrierServiceId}.json`,
-        {
-          carrier_service: {
-            id: existing.carrierServiceId,
-            active: false,
-          },
-        },
-        {
-          headers: {
-            "X-Shopify-Access-Token": accessToken,
-            "Content-Type": "application/json",
-          },
+          console.log("✅ Carrier deleted");
+
+          // Update DB so carrierServiceId is cleared
+          await upsertShopConfig({
+            shop,
+            enabled: false,
+            endpoint,
+            apiKey,
+            carrierServiceId: null,
+          });
+        } catch (error) {
+          console.error("❌ Error deleting carrier service:", error);
+          return json({ ok: false, error: "Failed to delete carrier service" });
         }
-      );
 
-      console.log("✅ Carrier disabled");
+        return json({ ok: true });
+      }
 
-      await upsertShopConfig({
-        shop,
-        enabled: false,
-        endpoint,
-        apiKey,
-        carrierServiceId: existing.carrierServiceId,
-      });
-    } catch (error) {
-      console.error("❌ Error disabling carrier service:", error);
-      return json({ ok: false, error: "Failed to disable carrier service" });
     }
-
-    return json({ ok: true });
-  }
-}
-
   } catch (e: any) {
     console.error("❌ Carrier op failed:", e.response?.data || e.message);
     carrierError = e.message || "Carrier operation failed";
