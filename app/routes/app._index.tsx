@@ -78,7 +78,22 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       // save the created/updated carrier ID
       await upsertShopConfig({ shop, enabled, endpoint, apiKey, carrierServiceId });
-    } 
+    } else {
+    // 🔴 disable case
+    const config = await prisma.shopConfig.findUnique({ where: { shop } });
+    if (config?.carrierServiceId) {
+      await axios.put(
+        `https://${shop}/admin/api/${API_VERSION}/carrier_services/${config.carrierServiceId}.json`,
+        {
+          carrier_service: {
+            active: false,   // <-- disable carrier in Shopify
+          },
+        },
+        { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
+      );
+    }
+    await upsertShopConfig({ shop, enabled, endpoint, apiKey });
+  }
   } catch (e: any) {
     console.error("❌ Carrier op failed:", e.response?.data || e.message);
     carrierError = e.message || "Carrier operation failed";
