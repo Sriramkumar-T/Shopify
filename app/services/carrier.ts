@@ -38,7 +38,7 @@ export async function handleCarrierService(opts: {
   const ours = existing.filter((c) => c.name?.startsWith(CARRIER_NAME));
   for (const c of ours) {
     try {
-      await updateExistingCarrierService(accessToken, shop, c.id, callbackUrl);
+      await updateExistingCarrierService(accessToken, shop, c.id, callbackUrl,enabled);
       console.log(`✅ Updated carrier ${c.id}`);
       return String(c.id);
     } catch (err: any) {
@@ -59,7 +59,7 @@ export async function handleCarrierService(opts: {
 
   // Create new
   console.log("➕ Creating carrier…");
-  return await createCarrierService(accessToken, shop, callbackUrl);
+  return await createCarrierService(accessToken, shop, callbackUrl,enabled);
 }
 
 // ---------- helpers ----------
@@ -75,7 +75,8 @@ async function updateExistingCarrierService(
   accessToken: string,
   shop: string,
   carrierId: string,
-  callbackUrl: string
+  callbackUrl: string,
+  active: boolean
 ) {
   await axios.put(
     `https://${shop}/admin/api/${API_VERSION}/carrier_services/${carrierId}.json`,
@@ -84,7 +85,7 @@ async function updateExistingCarrierService(
         callback_url: callbackUrl,
         service_discovery: true,
         format: "json",
-        active: true,   // ✅ always true, never false
+        active, 
       },
     },
     { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
@@ -94,7 +95,8 @@ async function updateExistingCarrierService(
 async function createCarrierService(
   accessToken: string,
   shop: string,
-  callbackUrl: string
+  callbackUrl: string,
+  active: boolean
 ): Promise<string> {
   const r = await axios.post(
     `https://${shop}/admin/api/${API_VERSION}/carrier_services.json`,
@@ -104,7 +106,7 @@ async function createCarrierService(
         callback_url: callbackUrl,
         service_discovery: true,
         format: "json",
-        active: true,   // ✅ always true, never false
+        active,
       },
     },
     { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
