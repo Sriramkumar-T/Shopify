@@ -85,7 +85,7 @@ async function updateExistingCarrierService(
         callback_url: callbackUrl,
         service_discovery: true,
         format: "json",
-        active, 
+        active: active, 
       },
     },
     { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
@@ -106,7 +106,7 @@ async function createCarrierService(
         callback_url: callbackUrl,
         service_discovery: true,
         format: "json",
-        active,
+        active: active,
       },
     },
     { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }

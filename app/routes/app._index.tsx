@@ -86,7 +86,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         `https://${shop}/admin/api/${API_VERSION}/carrier_services/${config.carrierServiceId}.json`,
         {
           carrier_service: {
-            active: false,   // <-- disable carrier in Shopify
+            active: false,
+            callback_url: config.endpoint + `/api/Integration/shopify/${config.apiKey}`,   // <-- disable carrier in Shopify
           },
         },
         { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
