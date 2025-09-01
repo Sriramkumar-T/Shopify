@@ -26,17 +26,64 @@ export async function clearShopData(shop: string) {
   }
 }
 
-export async function upsertShopConfig(opts: {
+
+// export async function upsertShopConfig(opts: {
+//   shop: string;
+//   enabled: boolean;
+//   endpoint: string;
+//   apiKey: string;
+//   carrierServiceId?: string | null;
+// }) {
+//   const { shop, enabled, endpoint, apiKey, carrierServiceId = null } = opts;
+
+//   return prisma.shopConfig.upsert({
+//     where: { shop },
+//     update: {
+//       enabled,
+//       endpoint,
+//       apiKey,
+//       carrierServiceId: carrierServiceId ? String(carrierServiceId) : null, // ✅ cast to string
+//       updatedAt: new Date(),
+//     },
+//     create: {
+//       shop,
+//       enabled,
+//       endpoint,
+//       apiKey,
+//       carrierServiceId: carrierServiceId ? String(carrierServiceId) : null, // ✅ cast to string
+//     },
+//   });
+// }
+export async function upsertShopConfig({
+  shop,
+  enabled,
+  endpoint,
+  apiKey,
+  carrierServiceId,
+}: {
   shop: string;
   enabled: boolean;
   endpoint: string;
   apiKey: string;
   carrierServiceId?: string | null;
 }) {
-  const { shop, enabled, endpoint, apiKey, carrierServiceId = null } = opts;
+  const existing = await prisma.shopConfig.findUnique({ where: { shop } });
+
   return prisma.shopConfig.upsert({
     where: { shop },
-    update: { enabled, endpoint, apiKey, carrierServiceId, updatedAt: new Date() },
-    create: { shop, enabled, endpoint, apiKey, carrierServiceId },
+    update: {
+      enabled,
+      endpoint,
+      apiKey,
+      // ✅ only overwrite if explicitly provided
+      ...(carrierServiceId !== undefined ? { carrierServiceId } : {}),
+    },
+    create: {
+      shop,
+      enabled,
+      endpoint,
+      apiKey,
+      carrierServiceId: carrierServiceId ?? null,
+    },
   });
 }

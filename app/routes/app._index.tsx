@@ -78,27 +78,43 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
       // save the created/updated carrier ID
       await upsertShopConfig({ shop, enabled, endpoint, apiKey, carrierServiceId });
-    } else {
-    // 🔴 disable case
-    const config = await prisma.shopConfig.findUnique({ where: { shop } });
-    if (config?.carrierServiceId) {
-      await axios.put(
-        `https://${shop}/admin/api/${API_VERSION}/carrier_services/${config.carrierServiceId}.json`,
-        {
-          carrier_service: {
-            active: false,
-            callback_url: config.endpoint + `/api/Integration/shopify/${config.apiKey}`,   // <-- disable carrier in Shopify
+        } else {
+      // 🔴 disable case
+      const config = await prisma.shopConfig.findUnique({ where: { shop } });
+      console.log("🟡 Disable branch check. Config:", config);
+      if (config?.carrierServiceId) {
+        const response = await axios.put(
+          `https://${shop}/admin/api/${API_VERSION}/carrier_services/${config.carrierServiceId}.json`,
+          {
+            carrier_service: {
+              active: false,
+              callback_url: config.endpoint + `/api/Integration/shopify/${config.apiKey}`,
+            },
           },
-        },
-        { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
-      );
+          { headers: { "X-Shopify-Access-Token": accessToken, "Content-Type": "application/json" } }
+        );
+        console.log("🔻 Disabled carrier response:", JSON.stringify(response.data, null, 2));
+        // ✅ capture Shopify’s actual state
+        const carrier = response.data.carrier_service;
+
+        await upsertShopConfig({
+          shop,
+          enabled: carrier.active,       // <-- will now be false
+          endpoint,
+          apiKey,
+          carrierServiceId: String(carrier.id),  // keep ID stored
+        });
+      } else {
+        await upsertShopConfig({ shop, enabled, endpoint, apiKey });
+      }
+              
     }
-    await upsertShopConfig({ shop, enabled, endpoint, apiKey });
-  }
+
   } catch (e: any) {
     console.error("❌ Carrier op failed:", e.response?.data || e.message);
     carrierError = e.message || "Carrier operation failed";
   }
+
 
   const payload: ActionResponse = {
     ok: !carrierError,
